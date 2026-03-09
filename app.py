@@ -403,8 +403,17 @@ function step(){
 
     // Drone repulsion
     active.forEach(o=>{ if(o.id===d.id)return; const dn=Math.hypot(d.x-o.x,d.y-o.y)+1e-6,rep=C.collisionR+C.safetyMargin; if(dn<rep){const f=(rep-dn)/rep*C.maxAccel*2;fx+=(d.x-o.x)/dn*f;fy+=(d.y-o.y)/dn*f;} });
-    // Obstacle repulsion
-    obstacles.forEach(ob=>{ const dn=Math.hypot(d.x-ob.x,d.y-ob.y)+1e-6,rep=ob.r+C.collisionR+C.safetyMargin*2; if(dn<rep){const f=(rep-dn)/rep*C.maxAccel*3;fx+=(d.x-ob.x)/dn*f;fy+=(d.y-ob.y)/dn*f;} });
+    // Obstacle repulsion — wide influence zone, quadratic strength
+    obstacles.forEach(ob=>{
+      const dn   = Math.hypot(d.x-ob.x, d.y-ob.y) + 1e-6;
+      const softR = ob.r * 4 + 20;
+      if(dn < softR){
+        const pen = (softR - dn) / softR;
+        const f   = pen * pen * C.maxAccel * 14;
+        fx += (d.x - ob.x) / dn * f;
+        fy += (d.y - ob.y) / dn * f;
+      }
+    });
     // Boundary
     const B=MAP-5;
     if(d.x> B)fx-=C.maxAccel*(d.x-B)/5; if(d.x<-B)fx+=C.maxAccel*(-B-d.x)/5;
@@ -464,8 +473,27 @@ function render(){
   { const [sx,sy0]=w2s(0,MAP),[,sy1]=w2s(0,-MAP); ctx.beginPath();ctx.moveTo(sx,sy0);ctx.lineTo(sx,sy1);ctx.stroke(); }
   { const [sx0,sy]=w2s(-MAP,0),[sx1]=w2s(MAP,0);  ctx.beginPath();ctx.moveTo(sx0,sy);ctx.lineTo(sx1,sy);ctx.stroke(); }
 
-  // Obstacles
-  obstacles.forEach(ob=>{ const [ox,oy]=w2s(ob.x,ob.y),r=ob.r*S; ctx.beginPath();ctx.arc(ox,oy,r,0,2*Math.PI);ctx.fillStyle='rgba(239,68,68,.12)';ctx.fill();ctx.strokeStyle='#ef4444';ctx.lineWidth=2;ctx.stroke(); });
+  // Obstacles — hard body + soft influence zone
+  obstacles.forEach(ob=>{
+    const [ox,oy] = w2s(ob.x,ob.y);
+    const S2 = worldScale();
+    const hardR = ob.r * S2;
+    const softR = (ob.r * 4 + 20) * S2;
+    // Influence zone (faint red gradient ring)
+    const grad = ctx.createRadialGradient(ox,oy,hardR,ox,oy,softR);
+    grad.addColorStop(0,'rgba(239,68,68,.18)');
+    grad.addColorStop(1,'rgba(239,68,68,0)');
+    ctx.beginPath(); ctx.arc(ox,oy,softR,0,2*Math.PI);
+    ctx.fillStyle=grad; ctx.fill();
+    // Hard body
+    ctx.beginPath(); ctx.arc(ox,oy,hardR,0,2*Math.PI);
+    ctx.fillStyle='rgba(239,68,68,.25)'; ctx.fill();
+    ctx.strokeStyle='#ef4444'; ctx.lineWidth=2; ctx.stroke();
+    // Label
+    ctx.fillStyle='#b91c1c'; ctx.font='bold 11px sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('OBS', ox, oy);
+  });
 
   // Comm links
   if(C.showLinks){ const a=act(); ctx.strokeStyle='rgba(99,102,241,.13)';ctx.lineWidth=1; for(let i=0;i<a.length;i++) for(let j=i+1;j<a.length;j++){ if(Math.hypot(a[i].x-a[j].x,a[i].y-a[j].y)<C.commRadius){ const [ax,ay]=w2s(a[i].x,a[i].y),[bx,by]=w2s(a[j].x,a[j].y); ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(bx,by);ctx.stroke(); } } }
@@ -582,7 +610,19 @@ document.getElementById('nDrones').addEventListener('change', () => {
   logEv('🚁 Drone count → ' + target);
 });
 document.getElementById('btnFail').onclick   = () => { const c=drones.filter(d=>!d.failed&&!d.isLeader); if(c.length){const v=c[Math.floor(rand()*c.length)];v.failed=true;logEv(`⚠️ Drone #${v.id} failed at t=${simTime.toFixed(1)}s`);} };
-document.getElementById('btnObs').onclick    = () => { const ob={x:rr(-55,55),y:rr(-55,55),r:rr(4,9)};obstacles.push(ob);logEv(`🚧 Obstacle at (${ob.x.toFixed(0)},${ob.y.toFixed(0)})`); };
+document.getElementById('btnObs').onclick = () => {
+  const ob = {x: rr(-50,50), y: rr(-50,50), r: rr(6,12)};
+  obstacles.push(ob);
+  drones.filter(d=>!d.failed).forEach(d=>{
+    const softR = ob.r * 4 + 20;
+    if(Math.hypot(d.tx-ob.x, d.ty-ob.y) < softR){
+      const ang = Math.atan2(d.ty-ob.y, d.tx-ob.x);
+      d.tx = ob.x + Math.cos(ang)*(softR+5);
+      d.ty = ob.y + Math.sin(ang)*(softR+5);
+    }
+  });
+  logEv('Obstacle at ('+ob.x.toFixed(0)+','+ob.y.toFixed(0)+') r='+ob.r.toFixed(1));
+};
 document.getElementById('btnGust').onclick   = () => { document.getElementById('windX').value=rr(-4,4).toFixed(1);document.getElementById('windY').value=rr(-4,4).toFixed(1);document.getElementById('vWx').textContent=parseFloat(document.getElementById('windX').value).toFixed(1);document.getElementById('vWy').textContent=parseFloat(document.getElementById('windY').value).toFixed(1);logEv(`💨 Wind gust (${C.windX.toFixed(1)},${C.windY.toFixed(1)})`); };
 document.getElementById('btnClearWind').onclick = () => { document.getElementById('windX').value=0;document.getElementById('windY').value=0;document.getElementById('vWx').textContent='0.0';document.getElementById('vWy').textContent='0.0';logEv('🔕 Wind cleared'); };
 
