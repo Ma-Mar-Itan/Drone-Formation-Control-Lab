@@ -560,6 +560,27 @@ document.getElementById('btnReset').onclick = () => {
 };
 document.getElementById('btnRandom').onclick = () => { resetSim(Math.floor(Math.random()*999999)); };
 document.getElementById('btnSwitch').onclick = () => { assignTargets(); logEv('🔄 Formation → '+C.formation); };
+
+// ── Auto-reassign when formation shape or transform changes ──
+['formation','formCx','formCy','formScale','formRot'].forEach(id => {
+  document.getElementById(id).addEventListener('change', () => {
+    assignTargets();
+    logEv('🔄 Formation → ' + C.formation);
+  });
+  // Also fire on slider input (continuous drag)
+  document.getElementById(id).addEventListener('input', () => {
+    assignTargets();
+  });
+});
+
+// ── Auto-respawn drones when count changes ──
+document.getElementById('nDrones').addEventListener('change', () => {
+  const target = C.nDrones;
+  while(drones.length < target){ drones.push(mkDrone(drones.length)); drones[drones.length-1].isLeader=false; }
+  if(drones.length > target){ drones = drones.slice(0, target); drones[0].isLeader=true; }
+  assignTargets();
+  logEv('🚁 Drone count → ' + target);
+});
 document.getElementById('btnFail').onclick   = () => { const c=drones.filter(d=>!d.failed&&!d.isLeader); if(c.length){const v=c[Math.floor(rand()*c.length)];v.failed=true;logEv(`⚠️ Drone #${v.id} failed at t=${simTime.toFixed(1)}s`);} };
 document.getElementById('btnObs').onclick    = () => { const ob={x:rr(-55,55),y:rr(-55,55),r:rr(4,9)};obstacles.push(ob);logEv(`🚧 Obstacle at (${ob.x.toFixed(0)},${ob.y.toFixed(0)})`); };
 document.getElementById('btnGust').onclick   = () => { document.getElementById('windX').value=rr(-4,4).toFixed(1);document.getElementById('windY').value=rr(-4,4).toFixed(1);document.getElementById('vWx').textContent=parseFloat(document.getElementById('windX').value).toFixed(1);document.getElementById('vWy').textContent=parseFloat(document.getElementById('windY').value).toFixed(1);logEv(`💨 Wind gust (${C.windX.toFixed(1)},${C.windY.toFixed(1)})`); };
